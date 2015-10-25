@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <time.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <netinet/in.h>
 
@@ -13,12 +14,16 @@ struct client_data{
 	struct aiocb *aiocbo_ptr;
 	struct client_data *next;
 	int to_delete;
-	int con_num;
+	long con_num;
 	int sock_id;
+	struct timeval start,end;
 };
-unsigned int connection_count = 0,active_count = 0;
+unsigned long connection_count = 0,active_count = 0;
+unsigned long avg_time_count = 0;
+double avg_time = 0.0;
 #define BUF_SIZE 4096
 //struct aiocb *aiocbo_ptr[10000];
+int print_flag = 0;
 void executeFunction(int newsockfd);
 void callAIOREAD(struct aiocb* aiocbptr, int offset, int sockfd);
 struct client_data * insert_data(struct client_data * Head);
@@ -73,6 +78,7 @@ int main(int argc, char *argv[])
 			HEAD = insert_data(HEAD);
 			HEAD->sock_id = newsockfd;
 			//printf("Inserted into data list\n");
+			gettimeofday(&HEAD->start,NULL);
 			callAIOREAD(HEAD->aiocbo_ptr, 0, newsockfd);
 		}
 		//If there are no more connections to satisfy
@@ -102,6 +108,7 @@ int main(int argc, char *argv[])
 								active_count--;
 								//printf("\nTotal connections = %d,Active conections = %d\n",connection_count,active_count);
 								//printf("Connection number %d set for deletion\n",blk->con_num);
+								gettimeofday(&blk->end,NULL);
 								close(blk->sock_id);
 							}
 							else
@@ -119,6 +126,11 @@ int main(int argc, char *argv[])
 			if(active_count == 0 && connection_count > 0)
 			{
 				HEAD = delete_node(HEAD);
+			}
+			if(print_flag == 1 && (connection_count % 1000) == 0)
+			{
+				printf("avg time for %ld clients = %lf\n",avg_time_count,avg_time);
+				print_flag = 0;
 			}
 	//		debug = HEAD;
 		/*	while(debug != NULL)
@@ -174,6 +186,21 @@ struct client_data * delete_node(struct client_data * Head)
 				//printf("Deleting node %d\n",temp->con_num);
 				//connection_count--;
 			//	close(temp->sock_id);
+				//printf("Start and end time = %ld,%ld",temp->start.tv_sec,temp->end.tv_sec);
+				if(avg_time_count == 0)
+				{
+					avg_time_count++;
+					avg_time = (double)((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec));
+				}
+				else
+				{
+					avg_time_count++;
+					avg_time = (double)((avg_time * (avg_time_count -1)) + ((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec))) / avg_time_count;
+				}
+				
+				//printf("time for client %ld = %ld\n",temp->con_num,((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec)));
+				//printf("avg time for %ld clients = %ld\n",avg_time_count,avg_time);
+				print_flag = 1;
 				free((void *)temp->aiocbo_ptr->aio_buf);
 				free(temp->aiocbo_ptr);
 				free(temp);
@@ -193,6 +220,19 @@ struct client_data * delete_node(struct client_data * Head)
 			//printf("Deleting node %d\n",temp->con_num);
 			//connection_count--;
 		//	close(temp->sock_id);
+			if(avg_time_count == 0)
+			{
+				avg_time_count++;
+				avg_time = (double)((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec));
+			}
+			else
+			{
+				avg_time_count++;
+				avg_time = (double)((avg_time * (avg_time_count -1)) + ((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec))) / avg_time_count;
+			}
+			print_flag = 1;
+			//printf("time for client %ld = %ld\n",temp->con_num,((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec)));
+			//printf("avg time for %ld clients = %ld\n",avg_time_count,avg_time);
 			free((void *)temp->aiocbo_ptr->aio_buf);
 			free(temp->aiocbo_ptr);
 			free(temp);
