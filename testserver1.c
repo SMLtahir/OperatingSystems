@@ -16,14 +16,15 @@ struct thread_data{
 	struct timeval start,end;
 	};
 #define BUF_SIZE 4096
+#define NUM_THREADS 10000
 pthread_mutex_t mutextime;
 unsigned long avg_time_count = 0;
 unsigned long connection_count = 0;
 double avg_time = 0.0;
 int print_flag = 0;
 int main(int argc, char *argv[]) {
-	int sockfd, newsockfd, portno, clilen, *new_sock;
-	pthread_t threads[10000];
+	int sockfd, newsockfd, portno, clilen;
+	pthread_t threads[NUM_THREADS];
 	struct sockaddr_in serv_addr, cli_addr;
 	struct thread_data * thread_dataptr;
 	pthread_attr_t attr;
@@ -64,12 +65,10 @@ int main(int argc, char *argv[]) {
 
 		if(newsockfd > 0)
 		{		
-			pthread_t t;
 			thread_dataptr = (struct thread_data*)malloc(sizeof(struct thread_data));
 			thread_dataptr->buffer_data = (char *)malloc(sizeof(char)*BUF_SIZE);
 			thread_dataptr->sock = newsockfd;
-
-			if (pthread_create(&t, &attr, executeFunction, (void *)thread_dataptr) < 0)
+			if (pthread_create(&threads[i], &attr, executeFunction, (void *)thread_dataptr) < 0)
 			{
 				perror("could not create thread");
 				return 1;
@@ -79,7 +78,7 @@ int main(int argc, char *argv[]) {
 				printf("avg time for %ld clients = %lf\n",avg_time_count,avg_time);
 				print_flag = 0;
 			}
-			if(i<10000)
+			if(i<NUM_THREADS)
 			i++;
 			else
 			i=0;
