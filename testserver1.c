@@ -23,13 +23,14 @@ double avg_time = 0.0;
 int print_flag = 0;
 int main(int argc, char *argv[]) {
 	int sockfd, newsockfd, portno, clilen, *new_sock;
-
+	pthread_t threads[10000];
 	struct sockaddr_in serv_addr, cli_addr;
 	struct thread_data * thread_dataptr;
 	pthread_attr_t attr;
+	int i=0;
 	/* Initialize and set thread detached attribute */
    	pthread_attr_init(&attr);
-	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	/* First call to socket() function */
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -73,11 +74,15 @@ int main(int argc, char *argv[]) {
 				perror("could not create thread");
 				return 1;
 			}
-			if(print_flag == 1 && (connection_count % 10) == 0)
+			if(print_flag == 1 && (connection_count % 1000) == 0)
 			{
 				printf("avg time for %ld clients = %lf\n",avg_time_count,avg_time);
 				print_flag = 0;
 			}
+			if(i<10000)
+			i++;
+			else
+			i=0;
 		}
 	}
 	pthread_attr_destroy(&attr);
