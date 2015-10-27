@@ -29,7 +29,6 @@ unsigned long avg_time_count = 0;
 unsigned long connection_count = 0;
 double avg_time = 0.0;
 //Printing variables
-int print_flag = 0;
 int print_level = 1000;
 
 int main(int argc, char *argv[]) {
@@ -87,7 +86,7 @@ int main(int argc, char *argv[]) {
     printf("Listening on port %d\n",portno);
 	listen(sockfd, SOMAXCONN);
 	clilen = sizeof(cli_addr);
-	printf("Will print avg time for every %d client connections\n",print_level);
+	printf("Will print avg time for approx every %d client connections\n",print_level);
 
 	/* Accept actual connection from the client */
 	while (1) {
@@ -103,11 +102,6 @@ int main(int argc, char *argv[]) {
 			{
 				perror("could not create thread");
 				return 1;
-			}
-			if(print_flag == 1 && (connection_count % print_level) == 0)
-			{
-				printf("avg time for %ld clients = %lf\n",avg_time_count,avg_time);
-				print_flag = 0;
 			}
 			if(i<NUM_THREADS)
 			i++;
@@ -157,7 +151,10 @@ void *Function(void *thread_struct) {
 		avg_time = (double)((avg_time * (avg_time_count -1)) + mytime) / avg_time_count;
 	}
 	pthread_mutex_unlock (&mutextime);
-	print_flag = 1;
+	if(connection_count % print_level == 0)
+	{
+		printf("avg time for %ld clients = %lf\n",avg_time_count,avg_time);
+	}
 	free(my_data->buffer_data);
 	free(my_data);
 
