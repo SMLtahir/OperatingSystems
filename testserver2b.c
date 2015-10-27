@@ -99,6 +99,7 @@ int main(int argc, char *argv[])
 			//printf("Total connections = %d,Active conections = %d\n",connection_count,active_count);
 		  	//Create a linked list data
 			//printf("Calling insert into head\n");
+			fcntl(newsockfd, F_SETFL, O_ASYNC);
 			HEAD = insert_data(HEAD);
 			HEAD->sock_id = newsockfd;
 			gettimeofday(&HEAD->start,NULL);
