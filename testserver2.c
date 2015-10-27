@@ -28,7 +28,7 @@ double avg_time = 0.0;
 int print_flag = 0;
 int print_level = 1000;
 //Function declarations
-void callAIOREAD(struct aiocb* aiocbptr, int offset, int sockfd);
+void callAIOREAD(struct aiocb* aiocbptr, int offset);
 struct client_data * insert_data(struct client_data * Head);
 struct client_data * delete_node(struct client_data * Head);
 
@@ -99,7 +99,11 @@ int main(int argc, char *argv[])
 			HEAD = insert_data(HEAD);
 			HEAD->sock_id = newsockfd;
 			gettimeofday(&HEAD->start,NULL);
-			callAIOREAD(HEAD->aiocbo_ptr, 0, newsockfd);
+			memset(HEAD->aiocbo_ptr, 0, sizeof(struct aiocb));
+			HEAD->aiocbo_ptr->aio_buf = (char *)malloc(sizeof(char) * BUF_SIZE);
+			HEAD->aiocbo_ptr->aio_nbytes = BUF_SIZE;
+			HEAD->aiocbo_ptr->aio_fildes = newsockfd;
+			callAIOREAD(HEAD->aiocbo_ptr, 0);
 		}
 		//If there are no more connections to satisfy
 		if(newsockfd < 0)
@@ -113,8 +117,8 @@ int main(int argc, char *argv[])
 				 	{
 						if(aio_return(blk->aiocbo_ptr) > 0)
 						{
-							free((void *)blk->aiocbo_ptr->aio_buf);
-							callAIOREAD(blk->aiocbo_ptr, ((blk->aiocbo_ptr->aio_offset)+BUF_SIZE),blk->aiocbo_ptr->aio_fildes );
+							//free((void *)blk->aiocbo_ptr->aio_buf);
+							callAIOREAD(blk->aiocbo_ptr, ((blk->aiocbo_ptr->aio_offset)+BUF_SIZE));
 						}
 						else if(aio_return(blk->aiocbo_ptr) == 0)
 						{
@@ -148,11 +152,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void callAIOREAD(struct aiocb* aiocbptr, int offset, int sockfd){
-	memset(aiocbptr, 0, sizeof(struct aiocb));
-	aiocbptr->aio_buf = (char *)malloc(sizeof(char) * BUF_SIZE);
-	aiocbptr->aio_nbytes = BUF_SIZE;
-	aiocbptr->aio_fildes = sockfd;
+void callAIOREAD(struct aiocb* aiocbptr, int offset){
 	aiocbptr->aio_offset = offset;
 if (aio_read(aiocbptr) == -1)
 	{

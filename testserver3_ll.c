@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
 				perror("accept");
 				exit(EXIT_FAILURE);
 			}
-			//fcntl(new_socket, F_SETFL, O_ASYNC);
+			fcntl(new_socket, F_SETFL, O_ASYNC);
 
 			connection_count++;
 			active_count++;

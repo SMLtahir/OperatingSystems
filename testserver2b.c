@@ -103,6 +103,7 @@ int main(int argc, char *argv[])
 			HEAD = insert_data(HEAD);
 			HEAD->sock_id = newsockfd;
 			gettimeofday(&HEAD->start,NULL);
+			HEAD->buffer = (char *)malloc(sizeof(char) * BUF_SIZE);
 			callAIOREAD(HEAD);
 		}
 		//If there are no more connections to satisfy
@@ -113,7 +114,7 @@ int main(int argc, char *argv[])
 				if(blk->return_val > 0)
 				{
 
-                    			free((void *)blk->buffer);
+                    			//free((void *)blk->buffer);
                     			callAIOREAD(blk);
 				}
                 		else if(blk->return_val == 0 )
@@ -145,7 +146,7 @@ int main(int argc, char *argv[])
 }
 
 void callAIOREAD(struct client_data* mydata){
-	mydata->buffer = (char *)malloc(sizeof(char) * BUF_SIZE);
+	//mydata->buffer = (char *)malloc(sizeof(char) * BUF_SIZE);
 	//printf("status of connection %ld is %s\n",mydata->con_num,strerror(read(sockfd,(void*)mydata->buffer,BUF_SIZE)));
     	mydata->return_val = read(mydata->sock_id,(void*)mydata->buffer,BUF_SIZE);
 	if (mydata->return_val == -1)
