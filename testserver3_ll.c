@@ -8,29 +8,56 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO macros
+#include <sys/fcntl.h>
+//Definitions
+#define BUF_SIZE 4096
 struct client_data{
 	struct client_data *next;
 	char *buf;
 	int to_delete;
 	int con_num;
 	int sock_id;
+	int return_val;
+	struct timeval start,end;
 };
 
-#define TRUE   1
-#define FALSE  0
-#define PORT 5555
-#define BUF_SIZE 4096
-unsigned int connection_count = 0,active_count = 0;
+//variables for timing
+unsigned long connection_count = 0,active_count = 0;
+unsigned long avg_time_count = 0;
+double avg_time = 0.0;
+//varialbes for print
+int print_flag = 0;
+int print_level = 10;
+//Function declarations
 struct client_data * insert_data(struct client_data * Head);
 struct client_data * delete_node(struct client_data * Head);
 
 int main(int argc, char *argv[])
 {
-	int opt = TRUE;
-	int sock, addrlen, new_socket, newsockfd, i, valread, sd;
+	int opt = 1;	
+	int sock, addrlen, new_socket, newsockfd, i, valread, sd,portno;
 	int max_sd;
 	struct sockaddr_in address;
 	struct client_data *HEAD,*blk;
+	if(argc < 2)
+	{
+		print_level = 10;
+		portno = 5555;
+	}
+	else if(argc == 2)
+	{		
+		print_level = 1000;
+		portno = (int)atoi(argv[1]);
+	}
+	else if(argc == 3)
+	{
+		print_level = (int)atoi(argv[2]);
+		portno = (int)atoi(argv[1]);
+	}
+	else
+	{
+		printf("Invalid number of arguments\n");
+	}
 
 	//set of socket descriptors
 	fd_set readfds;
@@ -38,40 +65,37 @@ int main(int argc, char *argv[])
 	//create a master socket
 	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == 0)
 	{
-		perror("socket failed");
-		exit(EXIT_FAILURE);
+		printf("socket failed");
+		exit(1);
 	}
 
-	//set master socket to allow multiple connections , this is just a good habit, it will work without this
-	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
+	/*if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
 	{
-		perror("setsockopt");
-		exit(EXIT_FAILURE);
-	}
+		printf("setsockopt");
+		exit(1);
+	}*/
 
 	//type of socket created
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
-	address.sin_port = htons(PORT);
+	address.sin_port = htons(portno);
 
-	//bind the socket to localhost port 5555
+	//bind the socket
 	if (bind(sock, (struct sockaddr *)&address, sizeof(address))<0)
 	{
 		perror("bind failed");
-		exit(EXIT_FAILURE);
+		exit(1);
 	}
 
-	//try to specify maximum of 3 pending connections for the master socket
-	if (listen(sock, 1000) < 0)
-	{
-		perror("listen");
-		exit(EXIT_FAILURE);
-	}
+	
+	listen(sock, SOMAXCONN);
+	printf("Listening on port %d\n",portno);
+	printf("Will print avg time for approx every %d client connections\n",print_level);
 
 	//accept the incoming connection
 	addrlen = sizeof(address);
 	HEAD = NULL;
-	while (TRUE)
+	while (1)
 	{
 		//clear the socket set
 		FD_ZERO(&readfds);
@@ -86,10 +110,9 @@ int main(int argc, char *argv[])
 			
 			//if valid socket descriptor then add to read list
 			if (sd > 0){
-				FD_SET(sd, &readfds);		
+				FD_SET(sd, &readfds);
+				//printf("Registering socket %d\n",sd);		
 			}
-
-			//highest file descriptor number, need it for the select function
 			if (sd > max_sd)
 				max_sd = sd;
 		}
@@ -98,13 +121,13 @@ int main(int argc, char *argv[])
 		//wait for an activity on one of the sockets , timeout is NULL , so wait indefinitely
 		newsockfd = select(max_sd + 1, &readfds, NULL, NULL, NULL);
 
-		/*if ((newsockfd < 0) && (errno != EINTR))
+		if ((newsockfd < 0) && (errno != EINTR))
 		{
 			printf("select error, newsockfd = %d,err = %s\n",newsockfd,strerror(errno));
-		}*/
+		}
 		
 		
-		//If something happened on the master socket , then its an incoming connection
+		
 		if (FD_ISSET(sock, &readfds))
 		{
 			if ((new_socket = accept(sock, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
@@ -112,47 +135,55 @@ int main(int argc, char *argv[])
 				perror("accept");
 				exit(EXIT_FAILURE);
 			}
+			//fcntl(new_socket, F_SETFL, O_ASYNC);
 
 			connection_count++;
 			active_count++;
 			//printf("Total connections = %d,Active conections = %d\n",connection_count,active_count);
                   	//printf("connection number = %d, socket id = %d\n",connection_count,new_socket);
+			//getch();
 		  	//Create a linked list data
 			//printf("Calling insert into head\n");
 			HEAD = insert_data(HEAD);
 			HEAD->sock_id = new_socket;
+			HEAD->buf = (char *)malloc(sizeof(char) * BUF_SIZE);
+			gettimeofday(&HEAD->start,NULL);
 		}
 
 		//else its some IO operation on some other socket :)
 		for(blk=HEAD;blk;blk = blk->next)
-		{
-			sd = blk->sock_id;
-			
+		{			
 
-			if (FD_ISSET(sd, &readfds))
-			{
-				
-				//Check if it was for closing , and also read the incoming message				
-				if ((valread = read(sd, blk->buf, BUF_SIZE)) == 0)
+			if (FD_ISSET( blk->sock_id, &readfds))
+			{							
+								
+				blk->return_val = read(blk->sock_id, blk->buf, BUF_SIZE);			
+				if(blk->return_val > 0)
 				{
-					close(sd);
+					//printf("Read something\n");					
+                    			blk->return_val = read(sd, blk->buf, BUF_SIZE);
+				}
+                		else if(blk->return_val == 0 )
+                		{
+					//printf("Read everything\n");		                    			
 					blk->to_delete = 1;
-					active_count--;
-				}
-				//Echo back the message that came in
-				else
-				{
-					//set the string terminating NULL byte on the end of the data read
-					//buffer[valread] = '\0';
-					//	puts(buffer);
-					//send(sd , buffer , strlen(buffer) , 0 );
-				}
-				//printf("Valread = %d, socket id = %d\n",valread,blk->sock_id);
+                    			active_count--;
+                    			gettimeofday(&blk->end,NULL);
+                    			close(blk->sock_id);
+                		}
+                		else if(blk->return_val == -1)
+               			 {
+                 			printf("Unable to start read\n");
+					printf("status of connection %d is %s\n",blk->con_num,strerror(errno));
+                 			exit(0);
+               			 }
 			}
 		}
-		if(active_count == 0 && connection_count > 0)
+		HEAD = delete_node(HEAD);
+		if(print_flag == 1 && (connection_count % print_level) == 0)
 		{
-			HEAD = delete_node(HEAD);
+			printf("avg time for %ld clients = %lf\n",avg_time_count,avg_time);
+			print_flag = 0;
 		}
 	}
 
@@ -162,11 +193,10 @@ struct client_data * insert_data(struct client_data * Head)
 {
 	struct client_data * temp;
 	temp = (struct client_data *)malloc(sizeof(struct client_data));
-	temp->buf = (char *)malloc(sizeof(char) * BUF_SIZE);
 	temp->next = Head;
 	temp->to_delete = 0;
 	temp->con_num = connection_count;
-	return temp;	
+	return temp;
 }
 struct client_data * delete_node(struct client_data * Head)
 {
@@ -178,34 +208,62 @@ struct client_data * delete_node(struct client_data * Head)
 		{
 			if(curr_data->next->to_delete == 1)
 			{
-				
+
 				temp = curr_data->next;
 				curr_data->next = curr_data->next->next;
 				//printf("Deleting node %d\n",temp->con_num);
 				//connection_count--;
 			//	close(temp->sock_id);
-				free(temp->buf);
+				//printf("Start and end time = %ld,%ld",temp->start.tv_sec,temp->end.tv_sec);
+				if(avg_time_count == 0)
+				{
+					avg_time_count++;
+					avg_time = (double)((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec));
+				}
+				else
+				{
+					avg_time_count++;
+					avg_time = (double)((avg_time * (avg_time_count -1)) + ((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec))) / avg_time_count;
+				}
+
+				//printf("time for client %ld = %ld\n",temp->con_num,((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec)));
+				//printf("avg time for %ld clients = %ld\n",avg_time_count,avg_time);
+				print_flag = 1;
+				free((void *)temp->buf);
 				free(temp);
 				//printf("A node deleted\n");
-				
+
 			}
 			else
 			{
 				curr_data = curr_data->next;
 			}
-		}	
-		
+		}
+
 		if(Head->to_delete == 1)
 		{
 			temp = Head;
 			Head = Head->next;
 			//printf("Deleting node %d\n",temp->con_num);
 			//connection_count--;
-		//	close(temp->sock_id);			
-			free(temp->buf);
+		//	close(temp->sock_id);
+			if(avg_time_count == 0)
+			{
+				avg_time_count++;
+				avg_time = (double)((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec));
+			}
+			else
+			{
+				avg_time_count++;
+				avg_time = (double)((avg_time * (avg_time_count -1)) + ((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec))) / avg_time_count;
+			}
+			print_flag = 1;
+			//printf("time for client %ld = %ld\n",temp->con_num,((temp->end.tv_sec * 1000000 + temp->end.tv_usec)-(temp->start.tv_sec * 1000000 + temp->start.tv_usec)));
+			//printf("avg time for %ld clients = %ld\n",avg_time_count,avg_time);
+			free((void *)temp->buf);
 			free(temp);
 		//	printf("A node deleted\n");
 		}
 	}
-	return Head;	
+	return Head;
 }
